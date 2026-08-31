@@ -95,7 +95,7 @@ End Sub
 Sub setRangeDefaultValues()
     ' all ranges set to the default except the worksheet version number. That should be set in the calling sub
     Utils.CustomRange(sgRangeSnowflakeDriver) = "{SnowflakeDSIIDriver}"
-    Utils.CustomRange(sgRangeAuthType) = "User & Pass"
+    Utils.CustomRange(sgRangeAuthType) = "SSO"
     Utils.CustomRange(sgRangeLogWorksheet) = "Log"
     Utils.CustomRange(sgRangeWindowsTempDirectory) = "C:\temp"
     Utils.CustomRange(sgRangeDateInputFormat) = "Auto"

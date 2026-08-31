@@ -41,6 +41,17 @@ Sub ConnectFromRibbon(control As IRibbonControl)
     Call Utils.Connect
 End Sub
 
+' Dedicated ribbon button to connect using SSO (Authenticator=externalbrowser).
+' Forces the auth type to SSO before opening the login form, regardless of the
+' previously saved auth method, so the browser-based login flow is always used.
+Sub ConnectSSOFromRibbon(control As IRibbonControl)
+    If Not setupSnowflakeIntegration Then
+        Exit Sub
+    End If
+    Utils.CustomRange(sgRangeAuthType) = "SSO"
+    Call Utils.Connect
+End Sub
+
 Sub ExecuteSelectAllFromTableFromRibbon(control As IRibbonControl)
     If Not setupSnowflakeIntegration Then
         Exit Sub
@@ -71,6 +82,26 @@ Sub OpenSQLFormFromRibbon(control As IRibbonControl)
             End If
             Set StatusForm = Nothing
             Call StatusForm.execMethod("Query", "OpenSQLForm")
+        End If
+        StatusForm.Hide
+    End If
+End Sub
+
+Sub OpenSemanticPivotFormFromRibbon(control As IRibbonControl)
+    If Not setupSnowflakeIntegration Then
+        Exit Sub
+    End If
+    ' If this is one of the Addins worksheet don't allow because you don't want to overwrite it
+    If Not worksheetBelongsToAddin Then
+        If Utils.login Then
+            If Utils.CustomRange(sgRangeWarehouse) = "" Then
+                Call SetRoleAndWarehouseForm.ShowMe(True)
+                If Utils.CustomRange(sgRangeWarehouse) = "" Then
+                    Exit Sub
+                End If
+            End If
+            Set StatusForm = Nothing
+            SemanticPivotForm.Show
         End If
         StatusForm.Hide
     End If
