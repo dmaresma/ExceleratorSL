@@ -8,6 +8,29 @@ Option Explicit
 Private Const IMPORT_DELAY As String = "00:00:03"
 Private Const DELETE_DELAY As String = "00:00:05"
 
+' Build removes every other module before re-importing them, and the re-import is deferred with
+' Application.OnTime. Under Option Explicit that can only work if this module still compiles
+' while the others are gone - otherwise VBA cannot run Build.importComponents when the timer
+' fires, and the project is left with nothing but Build. So everything Build needs from Globals,
+' Utils and RibbonModule is duplicated here instead of referenced. Keep in sync with Globals.bas.
+Private Const bldRangeWorksheetVersionNumber As String = "sfWorksheetVersionNumber"
+Private Const bldRangeSnowflakeDriver As String = "sfSnowflakeDriver"
+Private Const bldRangeAuthType As String = "sfAuthType"
+Private Const bldRangeReadOnly As String = "sfReadOnly"
+Private Const bldRangeLogWorksheet As String = "sfLogWorksheet"
+Private Const bldRangeWindowsTempDirectory As String = "sfWindowsTempDirectory"
+Private Const bldRangeDateInputFormat As String = "sfDateInputFormat"
+Private Const bldRangeTimestampInputFormat As String = "sfTimestampInputFormat"
+Private Const bldRangeTimeInputFormat As String = "sfTimeInputFormat"
+Private Const bldSnowflakeConfigWorksheetName As String = "SnowflakeConfig"
+
+
+' Local copy of Utils.CustomRange, which is a plain Range() lookup. Used both as a getter and,
+' through the Range default property, as a setter - exactly like the original.
+Private Function bldRange(sRange As String) As range
+    Set bldRange = range(sRange)
+End Function
+
 'We need to make these variables public such that they can be given as arguments to application.ontime()
 Public componentsToImport As Dictionary 'Key = componentName, Value = componentFilePath
 Public sheetsToImport As Dictionary 'Key = componentName, Value = File object
@@ -47,18 +70,18 @@ Sub createAddin()
     'Delete all worksheets except the config one
     CleanupWorksheets
     'capture worksheet version number so it can be applied back after the cleanup
-    sworksheetVersionNumber = Utils.CustomRange(sgRangeWorksheetVersionNumber)
+    sworksheetVersionNumber = bldRange(bldRangeWorksheetVersionNumber)
     ' Remove ranges that are invalid and set others to empty
     CleanupRanges
     're-aply the worksheet version number
-    Utils.CustomRange(sgRangeWorksheetVersionNumber) = sworksheetVersionNumber
+    bldRange(bldRangeWorksheetVersionNumber) = sworksheetVersionNumber
     
     ' Application.DisplayAlerts = False
     Set wb = Workbooks(ActiveWorkbook.name)
-    Call RibbonModule.setAddinReadWrite
+    bldRange(bldRangeReadOnly) = "False"    ' inlined from RibbonModule.setAddinReadWrite
     wb.SaveAs fileName:=ThisWorkbook.Path & "\" & "SnowflakeExcelAddin.xlam", FileFormat:=xlOpenXMLAddIn, CreateBackup:=False
     
-    Call RibbonModule.setAddinReadOnly
+    bldRange(bldRangeReadOnly) = "True"     ' inlined from RibbonModule.setAddinReadOnly
     wb.SaveAs fileName:=ThisWorkbook.Path & "\" & "SnowflakeExcelAddinReadOnly.xlam", FileFormat:=xlOpenXMLAddIn, CreateBackup:=False
     'Open the original app
     Workbooks.Open origFullFileName
@@ -94,23 +117,23 @@ End Sub
 
 Sub setRangeDefaultValues()
     ' all ranges set to the default except the worksheet version number. That should be set in the calling sub
-    Utils.CustomRange(sgRangeSnowflakeDriver) = "{SnowflakeDSIIDriver}"
-    Utils.CustomRange(sgRangeAuthType) = "SSO"
-    Utils.CustomRange(sgRangeLogWorksheet) = "Log"
-    Utils.CustomRange(sgRangeWindowsTempDirectory) = "C:\temp"
-    Utils.CustomRange(sgRangeDateInputFormat) = "Auto"
-    Utils.CustomRange(sgRangeTimestampInputFormat) = "Auto"
-    Utils.CustomRange(sgRangeTimeInputFormat) = "Auto"
-    Utils.CustomRange(sgRangeReadOnly) = "False" ' This should be set when building the addin
+    bldRange(bldRangeSnowflakeDriver) = "{SnowflakeDSIIDriver}"
+    bldRange(bldRangeAuthType) = "SSO"
+    bldRange(bldRangeLogWorksheet) = "Log"
+    bldRange(bldRangeWindowsTempDirectory) = "C:\temp"
+    bldRange(bldRangeDateInputFormat) = "Auto"
+    bldRange(bldRangeTimestampInputFormat) = "Auto"
+    bldRange(bldRangeTimeInputFormat) = "Auto"
+    bldRange(bldRangeReadOnly) = "False" ' This should be set when building the addin
 End Sub
 
 Sub CleanupWorksheets()
     Dim ws As Worksheet
     'Delete all worksheets except for the config one
     Application.DisplayAlerts = False
-    ActiveWorkbook.Sheets(gsSnowflakeConfigWorksheetName).Visible = True
+    ActiveWorkbook.Sheets(bldSnowflakeConfigWorksheetName).Visible = True
     For Each ws In Worksheets
-        If ws.name <> gsSnowflakeConfigWorksheetName Then
+        If ws.name <> bldSnowflakeConfigWorksheetName Then
             ws.Delete
         End If
     Next
@@ -535,7 +558,7 @@ Public Sub exportNamedRanges(wb As Workbook)
         Set aName = t
         If hasValidRange(aName) Then
             'Only pull ranges from the 'SnowflakeConfig' worksheet
-            If InStr(aName.value, gsSnowflakeConfigWorksheetName) Then
+            If InStr(aName.value, bldSnowflakeConfigWorksheetName) Then
                 lines.Add aName.name & "," & aName.RefersTo & "," & aName.comment
             End If
         End If
