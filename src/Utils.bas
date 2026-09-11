@@ -396,7 +396,7 @@ End Function
 Function lastPopulatedCell()
     Dim statusWorksheet As Worksheet
     Set statusWorksheet = Sheets(CustomRange(sgRangeLogWorksheet))
-    i = statusWorksheet.CustomRange(sgLastCellOnLogWS).End(xlUp).row
+    i = statusWorksheet.range(sgLastCellOnLogWS).End(xlUp).row
     lastPopulatedCell = "A" & i
 End Function
 
