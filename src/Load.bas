@@ -362,10 +362,10 @@ Sub DeleteAllEmptyColumns(ws As Worksheet)
     Dim UsedRng As range
 
     Set UsedRng = ws.UsedRange
-    LastColIndex = UsedRng.Column - 1 + UsedRng.Column.Count
+    LastColIndex = UsedRng.Column - 1 + UsedRng.columns.Count
     Application.ScreenUpdating = False
 
-    For ColIndex = LastRowIndex To 1 Step -1
+    For ColIndex = LastColIndex To 1 Step -1
         If Application.CountA(ws.columns(ColIndex)) = 0 Then
             ws.columns(ColIndex).Delete
         End If
