@@ -101,8 +101,10 @@ Sub createTest(storedProcOrVBA As String, addExplicitDataTypes As Boolean)
         Call Load.AddDataTypeDropDowns
     End If
     Call updateWorksheetWithTestData(1, addExplicitDataTypes)
-    'set upload table name
-    Utils.CustomRange(sgRangeTableName) = uploadTestTable
+    ' The upload table name used to be written to a sgRangeTableName named range here, but that
+    ' constant is declared nowhere in the project: the line could not compile, and would have
+    ' raised at runtime too since Range(Empty) is invalid. uploadData takes the name as its
+    ' second argument anyway, which the call below already passes.
     Call Load.uploadData(copType, uploadTestTable, "")
     Call StatusForm.Update_Status("Checking Datatypes...")
 
