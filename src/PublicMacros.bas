@@ -87,26 +87,6 @@ Sub OpenSQLFormFromRibbon(control As IRibbonControl)
     End If
 End Sub
 
-Sub OpenSemanticPivotFormFromRibbon(control As IRibbonControl)
-    If Not setupSnowflakeIntegration Then
-        Exit Sub
-    End If
-    ' If this is one of the Addins worksheet don't allow because you don't want to overwrite it
-    If Not worksheetBelongsToAddin Then
-        If Utils.login Then
-            If Utils.CustomRange(sgRangeWarehouse) = "" Then
-                Call SetRoleAndWarehouseForm.ShowMe(True)
-                If Utils.CustomRange(sgRangeWarehouse) = "" Then
-                    Exit Sub
-                End If
-            End If
-            Set StatusForm = Nothing
-            SemanticPivotForm.Show
-        End If
-        StatusForm.Hide
-    End If
-End Sub
-
 Function setupSnowflakeIntegration()
     If doesWorksheetExist Then
         Call Utils.CopySnowflakeConfgWS
