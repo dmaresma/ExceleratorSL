@@ -24,13 +24,6 @@ Private Const bldRangeTimestampInputFormat As String = "sfTimestampInputFormat"
 Private Const bldRangeTimeInputFormat As String = "sfTimeInputFormat"
 Private Const bldSnowflakeConfigWorksheetName As String = "SnowflakeConfig"
 
-
-' Local copy of Utils.CustomRange, which is a plain Range() lookup. Used both as a getter and,
-' through the Range default property, as a setter - exactly like the original.
-Private Function bldRange(sRange As String) As range
-    Set bldRange = range(sRange)
-End Function
-
 'We need to make these variables public such that they can be given as arguments to application.ontime()
 Public componentsToImport As Dictionary 'Key = componentName, Value = componentFilePath
 Public sheetsToImport As Dictionary 'Key = componentName, Value = File object
@@ -43,6 +36,13 @@ Private Enum columns
     RefersTo
     Comments
 End Enum
+
+
+' Local copy of Utils.CustomRange, which is a plain Range() lookup. Used both as a getter and,
+' through the Range default property, as a setter - exactly like the original.
+Private Function bldRange(sRange As String) As range
+    Set bldRange = range(sRange)
+End Function
 
 '***************** Creates Addin *********************
 Sub createAddin()
