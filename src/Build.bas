@@ -38,10 +38,14 @@ Private Enum columns
 End Enum
 
 
-' Local copy of Utils.CustomRange, which is a plain Range() lookup. Used both as a getter and,
-' through the Range default property, as a setter - exactly like the original.
+' Local stand-in for Utils.CustomRange. The original resolves the name with an unqualified
+' Range(), which is Application.Range: it needs an active sheet and searches the active workbook.
+' createAddin deletes every worksheet but one and saves the book under other names while it runs,
+' so that lookup fails there with "the Range method of object _Global failed". Going through the
+' name object of the workbook that actually owns it has no such dependency. Used both as a getter
+' and, through the Range default property, as a setter - exactly like the original.
 Private Function bldRange(sRange As String) As range
-    Set bldRange = range(sRange)
+    Set bldRange = ThisWorkbook.Names(sRange).RefersToRange
 End Function
 
 '***************** Creates Addin *********************
@@ -59,6 +63,12 @@ Sub createAddin()
     
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
+    ' Excel writes defined names into the saved file using the reference style in effect. Under
+    ' R1C1 they come back as text such as SnowflakeConfig!L1C3 instead of SnowflakeConfig!$C$1,
+    ' which no longer resolves to a range: every later Range() or RefersToRange on them fails and
+    ' the build cannot run again. Forcing A1 keeps the generated files usable whatever the user
+    ' has configured.
+    Application.ReferenceStyle = xlA1
     Set wb = Workbooks(ActiveWorkbook.name)
     ' Save in case. This file will be closed and reopened
     wb.save
@@ -103,14 +113,28 @@ End Sub
 
 Sub CleanupRanges()
     Dim n As name
-    
-    For Each n In ActiveWorkbook.Names
+    Dim rng As range
+    Dim i As Long
+
+    ' Walk backwards: deleting from Names while moving forward with For Each shifts the
+    ' collection and silently skips entries.
+    For i = ActiveWorkbook.Names.Count To 1 Step -1
+        Set n = ActiveWorkbook.Names(i)
         If InStr(n.value, "#REF!") > 0 Then
             n.Delete
         Else
-            n.RefersToRange = ""
+            ' Not every defined name points at cells. Data model connection names (_xlcn.*)
+            ' refer to a table, and RefersToRange raises "application-defined or object-defined
+            ' error" on them, which used to abort the whole build. Those are left untouched.
+            Set rng = Nothing
+            On Error Resume Next
+            Set rng = n.RefersToRange
+            On Error GoTo 0
+            If Not rng Is Nothing Then
+                rng.value = ""
+            End If
         End If
-    Next
+    Next i
     'since we emptied all ranges above, we need to set the defaults
     setRangeDefaultValues
 End Sub
@@ -517,6 +541,15 @@ Public Sub importNamedRanges(wb As Workbook)
     fileName = importDir & NAMED_RANGES_FILE_NAME
     Dim FSO As New Scripting.FileSystemObject
     If FSO.FileExists(fileName) Then
+        ' Names.Add parses its RefersTo argument according to the reference style in effect, and
+        ' NamedRanges.csv is written in A1. Under the R1C1 style an address such as $C$1 is not a
+        ' valid reference: Excel then stores the name as a plain string, so the name exists but
+        ' resolves to nothing and every later Range() or RefersToRange on it fails. Forcing A1
+        ' for the duration of the import keeps the result independent of the user's setting.
+        Dim prevStyle As XlReferenceStyle
+        prevStyle = Application.ReferenceStyle
+        Application.ReferenceStyle = xlA1
+
         Dim inStream As TextStream
         Set inStream = FSO.OpenTextFile(fileName, ForReading, Create:=False)
         Dim line As String
@@ -525,6 +558,8 @@ Public Sub importNamedRanges(wb As Workbook)
             importName wb, line
         Loop
         inStream.Close
+
+        Application.ReferenceStyle = prevStyle
     End If
 End Sub
 
@@ -550,6 +585,12 @@ Public Sub exportNamedRanges(wb As Workbook)
     Dim fileName As String
     fileName = exportDir & NAMED_RANGES_FILE_NAME
 
+    ' RefersTo is returned in the reference style in effect, so exporting under R1C1 would write
+    ' addresses that the A1 based import cannot parse back. A1 is forced to keep the file stable.
+    Dim prevStyle As XlReferenceStyle
+    prevStyle = Application.ReferenceStyle
+    Application.ReferenceStyle = xlA1
+
     Dim lines As Collection
     Set lines = New Collection
     Dim aName As name
@@ -563,6 +604,8 @@ Public Sub exportNamedRanges(wb As Workbook)
             End If
         End If
     Next
+    Application.ReferenceStyle = prevStyle
+
     If lines.Count > 0 Then
         'We have some names to export
         Debug.Print "writing to  " & fileName
