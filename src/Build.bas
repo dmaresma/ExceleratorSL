@@ -63,12 +63,6 @@ Sub createAddin()
     
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
-    ' Excel writes defined names into the saved file using the reference style in effect. Under
-    ' R1C1 they come back as text such as SnowflakeConfig!L1C3 instead of SnowflakeConfig!$C$1,
-    ' which no longer resolves to a range: every later Range() or RefersToRange on them fails and
-    ' the build cannot run again. Forcing A1 keeps the generated files usable whatever the user
-    ' has configured.
-    Application.ReferenceStyle = xlA1
     Set wb = Workbooks(ActiveWorkbook.name)
     ' Save in case. This file will be closed and reopened
     wb.save
@@ -541,15 +535,6 @@ Public Sub importNamedRanges(wb As Workbook)
     fileName = importDir & NAMED_RANGES_FILE_NAME
     Dim FSO As New Scripting.FileSystemObject
     If FSO.FileExists(fileName) Then
-        ' Names.Add parses its RefersTo argument according to the reference style in effect, and
-        ' NamedRanges.csv is written in A1. Under the R1C1 style an address such as $C$1 is not a
-        ' valid reference: Excel then stores the name as a plain string, so the name exists but
-        ' resolves to nothing and every later Range() or RefersToRange on it fails. Forcing A1
-        ' for the duration of the import keeps the result independent of the user's setting.
-        Dim prevStyle As XlReferenceStyle
-        prevStyle = Application.ReferenceStyle
-        Application.ReferenceStyle = xlA1
-
         Dim inStream As TextStream
         Set inStream = FSO.OpenTextFile(fileName, ForReading, Create:=False)
         Dim line As String
@@ -558,8 +543,6 @@ Public Sub importNamedRanges(wb As Workbook)
             importName wb, line
         Loop
         inStream.Close
-
-        Application.ReferenceStyle = prevStyle
     End If
 End Sub
 
@@ -574,7 +557,21 @@ Private Sub importName(wb As Workbook, line As String)
 
     ' Existing namedRanges don't need to be removed first.
     ' wb.Names.Add will automatically replace or add the given namedRange.
-    wb.Names.Add(rangeName, rangeAddress).comment = comment
+    '
+    ' The target is handed over as a Range object, not as the address text read from the CSV.
+    ' Given the text, Excel stored these names as a literal formula such as SnowflakeConfig!L1C3
+    ' rather than as a reference: they resolved to nothing, and createAddin then failed on every
+    ' one of them. Range() always reads an A1 address, so building the object first leaves Excel
+    ' nothing to interpret.
+    Dim bangPos As Long
+    Dim sheetName As String
+    bangPos = InStrRev(rangeAddress, "!")
+    If bangPos > 0 Then
+        sheetName = Replace(Replace(Left(rangeAddress, bangPos - 1), "=", ""), "'", "")
+        wb.Names.Add(Name:=rangeName, RefersTo:=wb.Worksheets(sheetName).range(Mid(rangeAddress, bangPos + 1))).comment = comment
+    Else
+        wb.Names.Add(rangeName, rangeAddress).comment = comment
+    End If
 End Sub
 
 
@@ -584,12 +581,6 @@ Public Sub exportNamedRanges(wb As Workbook)
     exportDir = Build.getSourceDir(wb.FullName, createIfNotExists:=True)
     Dim fileName As String
     fileName = exportDir & NAMED_RANGES_FILE_NAME
-
-    ' RefersTo is returned in the reference style in effect, so exporting under R1C1 would write
-    ' addresses that the A1 based import cannot parse back. A1 is forced to keep the file stable.
-    Dim prevStyle As XlReferenceStyle
-    prevStyle = Application.ReferenceStyle
-    Application.ReferenceStyle = xlA1
 
     Dim lines As Collection
     Set lines = New Collection
@@ -604,8 +595,6 @@ Public Sub exportNamedRanges(wb As Workbook)
             End If
         End If
     Next
-    Application.ReferenceStyle = prevStyle
-
     If lines.Count > 0 Then
         'We have some names to export
         Debug.Print "writing to  " & fileName
