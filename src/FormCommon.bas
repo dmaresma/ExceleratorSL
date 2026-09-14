@@ -18,10 +18,12 @@ Sub dropDBObjectsCache()
     dictSchemas.RemoveAll
     dictTables.RemoveAll
     dictColumns.RemoveAll
+    Call SemanticView.dropSemanticViewCache
 End Sub
 Sub dropDBObjectsTableCache()
     dictTables.RemoveAll
     dictColumns.RemoveAll
+    Call SemanticView.dropSemanticViewCache
 End Sub
 Sub dropDBObjectsColumnCache()
     dictColumns.RemoveAll
@@ -192,6 +194,7 @@ End Sub
 Sub getTablesCombobox(ByRef cbTables As comboBox, database As String, schema As String)
     Dim sql As String
     Dim arrTables As Variant
+    Dim arrSemanticViews As Variant
     Dim key As String
     Call StatusForm.Update_Status("Getting Tables...")
     key = database + "-" + schema
@@ -206,13 +209,29 @@ Sub getTablesCombobox(ByRef cbTables As comboBox, database As String, schema As 
         dictTables.Add Item:=arrTables, key:=key
     End If
 
-    On Error Resume Next ' Doing this because the array could be empty
-    'arrTables is a 2 dimensional array, with Columns being the first and rows the second
-    On Error GoTo ErrorHandlerDone
-    For i = LBound(arrTables) To UBound(arrTables, 2)
-        cbTables.AddItem (arrTables(0, i))
-    Next i
-    cbTables.ListIndex = 0
+    'arrTables is a 2 dimensional array, with Columns being the first and rows the second.
+    'It is uninitialized when the schema holds no table or view at all - a schema that only
+    'contains semantic views is exactly that case - so it is guarded rather than allowed to
+    'raise and skip the semantic views below.
+    If SemanticView.hasRows(arrTables) Then
+        For i = LBound(arrTables, 2) To UBound(arrTables, 2)
+            cbTables.AddItem (arrTables(0, i))
+        Next i
+    End If
+
+    'Semantic views are a distinct object kind: they are absent from INFORMATION_SCHEMA.TABLES
+    'and have to be listed with SHOW SEMANTIC VIEWS. They are appended to this same dropdown so
+    'the Execute SQL form can query them like any other object.
+    arrSemanticViews = SemanticView.getSemanticViewNames(database, schema)
+    If SemanticView.hasRows(arrSemanticViews) Then
+        For i = LBound(arrSemanticViews, 2) To UBound(arrSemanticViews, 2)
+            cbTables.AddItem (arrSemanticViews(0, i))
+        Next i
+    End If
+
+    If cbTables.ListCount > 0 Then
+        cbTables.ListIndex = 0
+    End If
 ErrorHandlerDone:
     If Not bInitializing Then
         StatusForm.Hide
@@ -301,6 +320,14 @@ End Function
 Public Function getColumnArray(database As String, schema As String, table As String)
     Dim sql As String
     Dim arrColumns As Variant
+
+    'A semantic view has no INFORMATION_SCHEMA.COLUMNS entry: its selectable objects come from
+    'DESCRIBE SEMANTIC VIEW instead. That array keeps the same 2 column shape (name + type), so
+    'the column picker shows FACT / DIMENSION where it shows a data type for a regular table.
+    If SemanticView.isSemanticView(database, schema, table) Then
+        getColumnArray = SemanticView.getSemanticObjects(database, schema, table)
+        Exit Function
+    End If
 
     key = database + "-" + schema + "-" + table
 

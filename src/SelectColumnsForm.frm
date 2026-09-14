@@ -30,10 +30,19 @@ Private Sub UserForm_Initialize()
 End Sub
 
 Private Sub btSelect_Click()
+    Dim bSemanticView As Boolean
+
+    'A semantic view reference is a qualified name such as FACT.QTY_DELIVERED and goes into the
+    'SEMANTIC_VIEW(...) clauses unquoted, unlike a plain column name which is double quoted.
+    bSemanticView = SemanticView.isSemanticView(database, schema, table)
     selectedColumnsCSV = ""
     For i = 0 To lbColumns.ListCount - 1
         If lbColumns.Selected(i) = True Then
-            selectedColumnsCSV = selectedColumnsCSV & ", """ & lbColumns.list(i) & """"
+            If bSemanticView Then
+                selectedColumnsCSV = selectedColumnsCSV & ", " & lbColumns.list(i, 0)
+            Else
+                selectedColumnsCSV = selectedColumnsCSV & ", """ & lbColumns.list(i) & """"
+            End If
         End If
     Next i
     selectedColumnsCSV = Replace(selectedColumnsCSV, ",", "", 1, 1)

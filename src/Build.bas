@@ -8,6 +8,22 @@ Option Explicit
 Private Const IMPORT_DELAY As String = "00:00:03"
 Private Const DELETE_DELAY As String = "00:00:05"
 
+' Build removes every other module before re-importing them, and the re-import is deferred with
+' Application.OnTime. Under Option Explicit that can only work if this module still compiles
+' while the others are gone - otherwise VBA cannot run Build.importComponents when the timer
+' fires, and the project is left with nothing but Build. So everything Build needs from Globals,
+' Utils and RibbonModule is duplicated here instead of referenced. Keep in sync with Globals.bas.
+Private Const bldRangeWorksheetVersionNumber As String = "sfWorksheetVersionNumber"
+Private Const bldRangeSnowflakeDriver As String = "sfSnowflakeDriver"
+Private Const bldRangeAuthType As String = "sfAuthType"
+Private Const bldRangeReadOnly As String = "sfReadOnly"
+Private Const bldRangeLogWorksheet As String = "sfLogWorksheet"
+Private Const bldRangeWindowsTempDirectory As String = "sfWindowsTempDirectory"
+Private Const bldRangeDateInputFormat As String = "sfDateInputFormat"
+Private Const bldRangeTimestampInputFormat As String = "sfTimestampInputFormat"
+Private Const bldRangeTimeInputFormat As String = "sfTimeInputFormat"
+Private Const bldSnowflakeConfigWorksheetName As String = "SnowflakeConfig"
+
 'We need to make these variables public such that they can be given as arguments to application.ontime()
 Public componentsToImport As Dictionary 'Key = componentName, Value = componentFilePath
 Public sheetsToImport As Dictionary 'Key = componentName, Value = File object
@@ -20,6 +36,17 @@ Private Enum columns
     RefersTo
     Comments
 End Enum
+
+
+' Local stand-in for Utils.CustomRange. The original resolves the name with an unqualified
+' Range(), which is Application.Range: it needs an active sheet and searches the active workbook.
+' createAddin deletes every worksheet but one and saves the book under other names while it runs,
+' so that lookup fails there with "the Range method of object _Global failed". Going through the
+' name object of the workbook that actually owns it has no such dependency. Used both as a getter
+' and, through the Range default property, as a setter - exactly like the original.
+Private Function bldRange(sRange As String) As range
+    Set bldRange = ThisWorkbook.Names(sRange).RefersToRange
+End Function
 
 '***************** Creates Addin *********************
 Sub createAddin()
@@ -47,18 +74,18 @@ Sub createAddin()
     'Delete all worksheets except the config one
     CleanupWorksheets
     'capture worksheet version number so it can be applied back after the cleanup
-    sworksheetVersionNumber = Utils.CustomRange(sgRangeWorksheetVersionNumber)
+    sworksheetVersionNumber = bldRange(bldRangeWorksheetVersionNumber)
     ' Remove ranges that are invalid and set others to empty
     CleanupRanges
     're-aply the worksheet version number
-    Utils.CustomRange(sgRangeWorksheetVersionNumber) = sworksheetVersionNumber
+    bldRange(bldRangeWorksheetVersionNumber) = sworksheetVersionNumber
     
     ' Application.DisplayAlerts = False
     Set wb = Workbooks(ActiveWorkbook.name)
-    Call RibbonModule.setAddinReadWrite
+    bldRange(bldRangeReadOnly) = "False"    ' inlined from RibbonModule.setAddinReadWrite
     wb.SaveAs fileName:=ThisWorkbook.Path & "\" & "SnowflakeExcelAddin.xlam", FileFormat:=xlOpenXMLAddIn, CreateBackup:=False
     
-    Call RibbonModule.setAddinReadOnly
+    bldRange(bldRangeReadOnly) = "True"     ' inlined from RibbonModule.setAddinReadOnly
     wb.SaveAs fileName:=ThisWorkbook.Path & "\" & "SnowflakeExcelAddinReadOnly.xlam", FileFormat:=xlOpenXMLAddIn, CreateBackup:=False
     'Open the original app
     Workbooks.Open origFullFileName
@@ -80,37 +107,51 @@ End Sub
 
 Sub CleanupRanges()
     Dim n As name
-    
-    For Each n In ActiveWorkbook.Names
+    Dim rng As range
+    Dim i As Long
+
+    ' Walk backwards: deleting from Names while moving forward with For Each shifts the
+    ' collection and silently skips entries.
+    For i = ActiveWorkbook.Names.Count To 1 Step -1
+        Set n = ActiveWorkbook.Names(i)
         If InStr(n.value, "#REF!") > 0 Then
             n.Delete
         Else
-            n.RefersToRange = ""
+            ' Not every defined name points at cells. Data model connection names (_xlcn.*)
+            ' refer to a table, and RefersToRange raises "application-defined or object-defined
+            ' error" on them, which used to abort the whole build. Those are left untouched.
+            Set rng = Nothing
+            On Error Resume Next
+            Set rng = n.RefersToRange
+            On Error GoTo 0
+            If Not rng Is Nothing Then
+                rng.value = ""
+            End If
         End If
-    Next
+    Next i
     'since we emptied all ranges above, we need to set the defaults
     setRangeDefaultValues
 End Sub
 
 Sub setRangeDefaultValues()
     ' all ranges set to the default except the worksheet version number. That should be set in the calling sub
-    Utils.CustomRange(sgRangeSnowflakeDriver) = "{SnowflakeDSIIDriver}"
-    Utils.CustomRange(sgRangeAuthType) = "SSO"
-    Utils.CustomRange(sgRangeLogWorksheet) = "Log"
-    Utils.CustomRange(sgRangeWindowsTempDirectory) = "C:\temp"
-    Utils.CustomRange(sgRangeDateInputFormat) = "Auto"
-    Utils.CustomRange(sgRangeTimestampInputFormat) = "Auto"
-    Utils.CustomRange(sgRangeTimeInputFormat) = "Auto"
-    Utils.CustomRange(sgRangeReadOnly) = "False" ' This should be set when building the addin
+    bldRange(bldRangeSnowflakeDriver) = "{SnowflakeDSIIDriver}"
+    bldRange(bldRangeAuthType) = "SSO"
+    bldRange(bldRangeLogWorksheet) = "Log"
+    bldRange(bldRangeWindowsTempDirectory) = "C:\temp"
+    bldRange(bldRangeDateInputFormat) = "Auto"
+    bldRange(bldRangeTimestampInputFormat) = "Auto"
+    bldRange(bldRangeTimeInputFormat) = "Auto"
+    bldRange(bldRangeReadOnly) = "False" ' This should be set when building the addin
 End Sub
 
 Sub CleanupWorksheets()
     Dim ws As Worksheet
     'Delete all worksheets except for the config one
     Application.DisplayAlerts = False
-    ActiveWorkbook.Sheets(gsSnowflakeConfigWorksheetName).Visible = True
+    ActiveWorkbook.Sheets(bldSnowflakeConfigWorksheetName).Visible = True
     For Each ws In Worksheets
-        If ws.name <> gsSnowflakeConfigWorksheetName Then
+        If ws.name <> bldSnowflakeConfigWorksheetName Then
             ws.Delete
         End If
     Next
@@ -516,7 +557,21 @@ Private Sub importName(wb As Workbook, line As String)
 
     ' Existing namedRanges don't need to be removed first.
     ' wb.Names.Add will automatically replace or add the given namedRange.
-    wb.Names.Add(rangeName, rangeAddress).comment = comment
+    '
+    ' The target is handed over as a Range object, not as the address text read from the CSV.
+    ' Given the text, Excel stored these names as a literal formula such as SnowflakeConfig!L1C3
+    ' rather than as a reference: they resolved to nothing, and createAddin then failed on every
+    ' one of them. Range() always reads an A1 address, so building the object first leaves Excel
+    ' nothing to interpret.
+    Dim bangPos As Long
+    Dim sheetName As String
+    bangPos = InStrRev(rangeAddress, "!")
+    If bangPos > 0 Then
+        sheetName = Replace(Replace(Left(rangeAddress, bangPos - 1), "=", ""), "'", "")
+        wb.Names.Add(Name:=rangeName, RefersTo:=wb.Worksheets(sheetName).range(Mid(rangeAddress, bangPos + 1))).comment = comment
+    Else
+        wb.Names.Add(rangeName, rangeAddress).comment = comment
+    End If
 End Sub
 
 
@@ -535,7 +590,7 @@ Public Sub exportNamedRanges(wb As Workbook)
         Set aName = t
         If hasValidRange(aName) Then
             'Only pull ranges from the 'SnowflakeConfig' worksheet
-            If InStr(aName.value, gsSnowflakeConfigWorksheetName) Then
+            If InStr(aName.value, bldSnowflakeConfigWorksheetName) Then
                 lines.Add aName.name & "," & aName.RefersTo & "," & aName.comment
             End If
         End If

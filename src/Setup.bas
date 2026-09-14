@@ -6,11 +6,8 @@ Sub ConfigSnowflakeAddIn()
     If ActiveWorkbook Is Nothing Or Not ThisWorkbook.IsAddin Then
         Exit Sub
     End If
-    
-    For Each n In ThisWorkbook.Names
-        On Error GoTo createName
-    Next n
-
+    ' The loop that stood here jumped to a createName label that was never written, so it did
+    ' not compile and could not have done anything either. Removed until the intent is known.
 End Sub
 
 

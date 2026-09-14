@@ -37,7 +37,20 @@ Dim spcs As String
 Dim bInitializing As Boolean
 
 Private Sub btSelectStar_Click()
-    tbSQL = "SELECT" + vbCrLf + spcs + "*" + vbCrLf + getFromClause
+    Dim sql As String
+
+    'SEMANTIC_VIEW(...) has no SELECT * form - every fact and dimension has to be named - so
+    'All Columns expands to the full list of objects instead.
+    If SemanticView.isSemanticView(cbDatabases.value, cbSchemas.value, cbTables.value) Then
+        sql = SemanticView.BuildSemanticViewSQLAllObjects(cbDatabases.value, cbSchemas.value, cbTables.value)
+        If sql = "" Then
+            MsgBox ("No Facts or Dimensions could be read from this Semantic View.")
+            Exit Sub
+        End If
+        tbSQL = sql
+    Else
+        tbSQL = "SELECT" + vbCrLf + spcs + "*" + vbCrLf + getFromClause
+    End If
 End Sub
 
 Private Sub btGetColumns_Click()
@@ -49,7 +62,11 @@ Private Sub btGetColumns_Click()
         SelectColumnsForm.Show
         selectedColumns = SelectColumnsForm.getSelectedColunms
         If selectedColumns <> "" Then
-            tbSQL = "SELECT " + vbCrLf + spcs + selectedColumns & vbCrLf & getFromClause
+            If SemanticView.isSemanticView(cbDatabases.value, cbSchemas.value, cbTables.value) Then
+                tbSQL = SemanticView.BuildSemanticViewSQL(cbDatabases.value, cbSchemas.value, cbTables.value, selectedColumns)
+            Else
+                tbSQL = "SELECT " + vbCrLf + spcs + selectedColumns & vbCrLf & getFromClause
+            End If
         End If
     End If
 End Sub

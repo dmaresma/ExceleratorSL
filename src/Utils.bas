@@ -31,7 +31,7 @@ Function ConnectionStringDSNLess()
         sRole = ""
     End If
     
-    ConnectionStringDSNLess = connectionType & "driver={SnowflakeDSIIDriver};server=" & LoginForm.tbServer & ";database=" & _
+    ConnectionStringDSNLess = connectionType & "driver=" & snowflakeDriverName() & ";server=" & LoginForm.tbServer & ";database=" & _
        CustomRange(sgRangeDefaultDatabase) & ";schema=" & CustomRange(sgRangeDefaultSchema) & ";warehouse=" & CustomRange(sgRangeWarehouse) & ";role=" & _
        sRole & ";Uid=" & LoginForm.tbUserID & ";"
     
@@ -53,6 +53,49 @@ Function ConnectionStringDSNLess()
         "    Warehouse: " & CustomRange(sgRangeWarehouse) & "    User: " & LoginForm.tbUserID & "    Role: " & CustomRange(sgRangeRole)
 
     ' Consider this: "CLIENT_SESSION_KEEP_ALIVE", "true"  If not the token expires in 4 hours
+End Function
+
+' The Snowflake ODBC driver registers under a different name depending on its version:
+' SnowflakeDSIIDriver up to 3.x, "Snowflake ODBC" since the 4.x rewrite. Hardcoding either one makes
+' the connection fail with "data source not found and no default driver specified" on a machine
+' that has the other. The sfSnowflakeDriver setting is honoured when that driver is really
+' installed; otherwise whichever known name is registered is used.
+Function snowflakeDriverName() As String
+    Dim configured As String
+    Dim candidate As Variant
+
+    On Error Resume Next
+    configured = Trim(CustomRange(sgRangeSnowflakeDriver))
+    On Error GoTo 0
+    configured = Replace(Replace(configured, "{", ""), "}", "")
+
+    If configured <> "" Then
+        If isOdbcDriverInstalled(configured) Then
+            snowflakeDriverName = "{" & configured & "}"
+            Exit Function
+        End If
+    End If
+
+    For Each candidate In Array("Snowflake ODBC", "SnowflakeDSIIDriver")
+        If isOdbcDriverInstalled(CStr(candidate)) Then
+            snowflakeDriverName = "{" & candidate & "}"
+            Exit Function
+        End If
+    Next candidate
+
+    ' Nothing detected: keep the name that was asked for, so the ODBC error still points at it.
+    If configured = "" Then configured = "SnowflakeDSIIDriver"
+    snowflakeDriverName = "{" & configured & "}"
+End Function
+
+' Reads the ODBC driver list of the registry view matching Excel's bitness, which is exactly the
+' set of drivers this Excel process is able to load.
+Private Function isOdbcDriverInstalled(driverName As String) As Boolean
+    Dim value As String
+    On Error Resume Next
+    value = CreateObject("WScript.Shell").RegRead("HKLM\SOFTWARE\ODBC\ODBCINST.INI\ODBC Drivers\" & driverName)
+    isOdbcDriverInstalled = (err.Number = 0 And value <> "")
+    On Error GoTo 0
 End Function
 
 Function ConnectionString()
@@ -396,7 +439,7 @@ End Function
 Function lastPopulatedCell()
     Dim statusWorksheet As Worksheet
     Set statusWorksheet = Sheets(CustomRange(sgRangeLogWorksheet))
-    i = statusWorksheet.CustomRange(sgLastCellOnLogWS).End(xlUp).row
+    i = statusWorksheet.range(sgLastCellOnLogWS).End(xlUp).row
     lastPopulatedCell = "A" & i
 End Function
 

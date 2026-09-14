@@ -36,14 +36,12 @@ Private Sub Frame1_Click()
 End Sub
 
 Private Sub rbSSO_Click()
-    gsAuthenticationType = "SSO"
     CustomRange(sgRangeAuthType) = "SSO"
     tbPassword.Enabled = False
     lblPassword.Enabled = False
 End Sub
 
 Private Sub rbUserPass_Click()
-    gsAuthenticationType = "UserPass"
     CustomRange(sgRangeAuthType) = "User & Pass"
     tbPassword.Enabled = True
     lblPassword.Enabled = True
